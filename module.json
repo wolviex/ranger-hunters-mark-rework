@@ -2,7 +2,6 @@
   "id": "ranger-hunters-mark-rework",
   "title": "Ranger: Favored Enemy → Hunter's Mark (Rework)",
   "description": "Class feature that replaces Favored Enemy with a scalable mark + Unleash Aspects.",
-  "version": "1.1.5",
   "authors": [{ "name": "Joe Manifold" }],
   "compatibility": { "minimum": "13", "verified": "13" },
   "relationships": {
@@ -41,7 +40,8 @@
     }
   ],
   "url": "https://github.com/wolviex/ranger-hunters-mark-rework",
-  "manifest": "https://raw.githubusercontent.com/wolviex/ranger-hunters-mark-rework/v1.1.5/module.json",
+  "version": "1.1.5",
+  "manifest": "https://raw.githubusercontent.com/wolviex/ranger-hunters-mark-rework/main/module.json",
   "download": "https://github.com/wolviex/ranger-hunters-mark-rework/releases/download/v1.1.5/ranger-hunters-mark-rework-v1.1.5.zip",
   "license": "LICENSE",
   "flags": { "ranger-hunters-mark-rework": { "schema": 2 } }
