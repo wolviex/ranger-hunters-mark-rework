@@ -1,21 +1,20 @@
-// Foundry v14, dnd5e 5.1.9
+// scripts/main.js
+// Ranger: Favored Enemy → Hunter's Mark (Rework)
+// Foundry v13+ compatible (tested with v13 b350); dnd5e 5.x
 // Author: Joe Manifold
 /* eslint no-undef:0 */
 
 /**
- * IMPLEMENTED (per your selections + defaults + add-ons):
- * - Class Feature item seeded to compendium.
- * - Uses = PB + WIS; resets on long rest.
- * - Apply Mark via target selection; 1/2/3 targets at lv 1/6/14. No transfer.
- * - Extra damage per hit on marked targets; die scales: 1d6@1,1d8@5,1d10@9,1d12@13,2d8@17; default damage type force; crit doubles (engine-default).
- * - Marks end on Unleash, target death, or long rest.
- * - Unleash Aspects: Detonation (10 ft, all creatures or allies-excluded via setting), Sight (1 min adv on Perception/Survival), Regeneration (self-heal WIS+die, min 1).
- * - Token HUD buttons: Apply Mark, Unleash.
- * - Status icon on marked targets (target shape).
- * - Chat card on Apply showing uses remaining + current die.
- * - Midi-QOL integration for automatic damage bonus.
- * - Core fallback: hotkey (Alt+M) to roll mark damage; optional chat button injection on attack messages.
- * - ApplicationV2 panel to view/remove marks and trigger Unleash.
+ * Features:
+ * - Class Feature item replacing Favored Enemy with a scalable mark + Unleash Aspects.
+ * - Uses/day = PB + WIS; targets per use = 1 (lv1), 2 (lv6), 3 (lv14); no transfer.
+ * - Bonus damage per hit vs. marked targets: 1d6@1,1d8@5,1d10@9,1d12@13,2d8@17; damage type configurable (default: force).
+ * - Marks end on Unleash, target death, or your long rest.
+ * - Unleash Aspects: Detonation (AoE dmg), Sight (skill advantage 1 min), Regeneration (heal self).
+ * - Token HUD buttons (Apply Mark / Unleash) + Scene Controls panel.
+ * - Midi-QOL integration for automatic damage bonus; core fallback (hotkey/chat button).
+ * - Compendium packs are ensured/created on load; feature is seeded automatically.
+ * - Option to auto-replace the original "Favored Enemy" on all Rangers and block future adds.
  */
 
 const MODULE_ID = "ranger-hunters-mark-rework";
@@ -25,16 +24,19 @@ const SETTINGS = {
   icon: "iconPath",
   damageType: "damageType",
   detFF: "detonationFriendlyFire",
-  coreButtons: "coreAttackButtons"
+  coreButtons: "coreAttackButtons",
+  autoReplace: "autoReplaceFavoredEnemy"
 };
 
 const DEFAULTS = {
   icon: "icons/svg/target.svg",
   damageType: "force",
   detonationFriendlyFire: true,
-  coreAttackButtons: true
+  coreAttackButtons: true,
+  autoReplace: true
 };
 
+/* ------------------------- Utilities ------------------------- */
 const F = {
   clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); },
   levelToMarkDie(level) {
@@ -49,15 +51,15 @@ const F = {
     if (level >= 6)  return 2;
     return 1;
   },
-  actorPB(actor) { return actor.system.attributes.prof ?? 2; },
-  actorWISmod(actor) { return actor.system.abilities?.wis?.mod ?? 0; },
+  actorPB(actor) { return actor?.system?.attributes?.prof ?? 2; },
+  actorWISmod(actor) { return actor?.system?.abilities?.wis?.mod ?? 0; },
   usesPerDay(actor) { return Math.max(0, F.actorPB(actor) + F.actorWISmod(actor)); },
   isRanger(actor) {
-    const classes = actor.system?.classes ?? {};
+    const classes = actor?.system?.classes ?? {};
     return Object.values(classes).some(c => (c?.identifier ?? c?.name ?? "").toLowerCase().includes("ranger"));
   },
   rangerLevel(actor) {
-    const classes = actor.system?.classes ?? {};
+    const classes = actor?.system?.classes ?? {};
     const ranger = Object.values(classes).find(c => (c?.identifier ?? c?.name ?? "").toLowerCase().includes("ranger"));
     return Number(ranger?.levels ?? 0);
   },
@@ -65,24 +67,25 @@ const F = {
   getDmgType() { return game.settings.get(MODULE_ID, SETTINGS.damageType); },
   ffOn() { return game.settings.get(MODULE_ID, SETTINGS.detFF); },
   coreBtns() { return game.settings.get(MODULE_ID, SETTINGS.coreButtons); },
+  autoReplace() { return game.settings.get(MODULE_ID, SETTINGS.autoReplace); },
 
   // flags on TARGET: flags.ranger-hunters-mark-rework.marks[<rangerUuid>]
-  getMarkOnTargetByRanger(target, rangerUuid) {
-    const marks = target.getFlag(MODULE_ID, "marks") || {};
+  getMarkOnTargetByRanger(targetActor, rangerUuid) {
+    const marks = targetActor?.getFlag(MODULE_ID, "marks") || {};
     return marks?.[rangerUuid] ?? null;
   },
-  async setMarkOnTargetByRanger(target, rangerUuid, payload) {
-    const marks = foundry.utils.duplicate(target.getFlag(MODULE_ID, "marks") || {});
+  async setMarkOnTargetByRanger(targetActor, rangerUuid, payload) {
+    const marks = foundry.utils.duplicate(targetActor.getFlag(MODULE_ID, "marks") || {});
     marks[rangerUuid] = payload;
-    await target.setFlag(MODULE_ID, "marks", marks);
+    await targetActor.setFlag(MODULE_ID, "marks", marks);
   },
-  async deleteMarkOnTargetByRanger(target, rangerUuid) {
-    const marks = foundry.utils.duplicate(target.getFlag(MODULE_ID, "marks") || {});
+  async deleteMarkOnTargetByRanger(targetActor, rangerUuid) {
+    const marks = foundry.utils.duplicate(targetActor.getFlag(MODULE_ID, "marks") || {});
     delete marks[rangerUuid];
-    await target.setFlag(MODULE_ID, "marks", marks);
+    await targetActor.setFlag(MODULE_ID, "marks", marks);
   },
   countActiveMarksForRanger(ranger) {
-    const tokens = canvas.tokens.placeables.map(t => t.actor).filter(Boolean);
+    const tokens = canvas?.tokens?.placeables?.map(t => t.actor).filter(Boolean) ?? [];
     const ruuid = ranger.uuid;
     return tokens.reduce((n, a) => n + (F.getMarkOnTargetByRanger(a, ruuid) ? 1 : 0), 0);
   },
@@ -91,54 +94,6 @@ const F = {
   async info(html) { ui.notifications.info(html); },
   async error(html) { ui.notifications.error(html); }
 };
-
-/** Ensure a compendium pack exists (v13/v14 compatible). */
-async function ensurePack({ name, label, type, system }) {
-  const collection = `${MODULE_ID}.${name}`;
-  let pack = game.packs.get(collection);
-  if (pack) return pack;
-
-  // Create the compendium (requires GM / server context)
-  const metadata = {
-    label,
-    name,
-    path: `packs/${name}.db`,
-    type,               // "Item" | "Macro" | etc.
-    system,             // "dnd5e" for Item packs; omit for Macro
-    package: MODULE_ID, // module id
-    private: false
-  };
-
-  // v10+ API
-  pack = await CompendiumCollection.createCompendium(metadata);
-  // Register it into game.packs for this session
-  return game.packs.get(`${MODULE_ID}.${name}`);
-}
-
-/** Build the seed feature (same as before). */
-function buildFeatureItemData() {
-  return {
-    name: "Favored Enemy: Hunter's Mark (Class Feature)",
-    type: "feat",
-    img: "icons/skills/targeting/target-strike-triple-blue.webp",
-    system: {
-      description: { value: `
-<p><strong>Hunter's Mark (Class Feature)</strong> — replaces Favored Enemy.</p>
-<ul>
-<li>Bonus action: mark up to N targets (N=1@1st, 2@6th, 3@14th).</li>
-<li>Uses/long rest = PB + WIS.</li>
-<li>On hit vs marked: scaling bonus damage (module-configurable type).</li>
-<li>Unleash: Detonation, Sight, Regeneration.</li>
-<li>Marks end on Unleash, target death, or your long rest.</li>
-</ul>` },
-      activation: { type: "bonus", cost: 1 },
-      uses: { value: 0, max: 0, per: "lr" },
-      requirements: "Ranger",
-      source: "Module: Ranger Rework"
-    },
-    flags: { [MODULE_ID]: { feature: true } }
-  };
-}
 
 /* ------------------------- Settings ------------------------- */
 function registerSettings() {
@@ -156,33 +111,54 @@ function registerSettings() {
   });
   game.settings.register(MODULE_ID, SETTINGS.detFF, {
     scope: "world", config: true, type: Boolean, default: DEFAULTS.detonationFriendlyFire,
-    name: "Detonation: Friendly Fire", hint: "If on, Detonation hits all creatures in range (RAW). If off, it excludes allies."
+    name: "Detonation: Friendly Fire", hint: "If on, Detonation hits all creatures in range. If off, excludes allies."
   });
   game.settings.register(MODULE_ID, SETTINGS.coreButtons, {
-    scope: "world", config: true, type: Boolean, default: DEFAULTS.coreAttackButtons,
+    scope: "world", config: true, type: Boolean, default: DEFAULTS.coreButtons,
     name: "Core Mode: Add Chat Buttons", hint: "Insert a 'Roll Mark Damage' button into attack chat messages (no Midi-QOL)."
+  });
+  game.settings.register(MODULE_ID, SETTINGS.autoReplace, {
+    scope: "world", config: true, type: Boolean, default: DEFAULTS.autoReplace,
+    name: "Auto-Replace Favored Enemy",
+    hint: "On world load, replace the original Favored Enemy feature on all Rangers with the new class feature. Also swaps future adds."
   });
 }
 
-/* --------------------- Feature & Effects --------------------- */
+/* --------------------- Packs & Seeding ----------------------- */
+async function ensurePack({ name, label, type, system }) {
+  const key = `${MODULE_ID}.${name}`;
+  let pack = game.packs.get(key);
+  if (pack) return pack;
+
+  const metadata = {
+    label, name, path: `packs/${name}.db`,
+    type, system, package: MODULE_ID, private: false
+  };
+
+  if (CompendiumCollection?.createCompendium) {
+    pack = await CompendiumCollection.createCompendium(metadata);
+    return game.packs.get(key);
+  } else {
+    ui.notifications.error("This Foundry version cannot create compendiums programmatically.");
+    return null;
+  }
+}
+
 function buildFeatureItemData() {
-  // Description shows a generic 1st-level die; actual die is computed at runtime.
   return {
     name: FEATURE_NAME,
     type: "feat",
     img: "icons/skills/targeting/target-strike-triple-blue.webp",
     system: {
-      description: {
-        value: `
+      description: { value: `
 <p><strong>Hunter's Mark (Class Feature)</strong> — replaces Favored Enemy.</p>
 <ul>
-<li>Bonus action to mark up to N targets (N = 1 at 1st, 2 at 6th, 3 at 14th).</li>
+<li>Bonus action to mark up to N targets (N = 1 @1st, 2 @6th, 3 @14th). No transfer.</li>
 <li>Uses per long rest = PB + WIS.</li>
-<li>On hit vs a marked target: bonus damage, scaling by Ranger level (module setting controls damage type).</li>
+<li>On hit vs a marked target: bonus damage scaling by Ranger level (module setting controls damage type).</li>
 <li>Unleash Aspects (consume a mark): Detonation, Sight, Regeneration.</li>
 <li>Marks end on Unleash, target death, or your long rest.</li>
-</ul>`
-      },
+</ul>` },
       activation: { type: "bonus", cost: 1 },
       uses: { value: 0, max: 0, per: "lr" },
       requirements: "Ranger",
@@ -192,8 +168,22 @@ function buildFeatureItemData() {
   };
 }
 
+async function getSeedFeatureFromPack() {
+  await ensurePack({ name: "features", label: "Ranger Rework - Features", type: "Item", system: "dnd5e" });
+  const pack = game.packs.get(`${MODULE_ID}.features`);
+  const index = await pack.getIndex();
+  let entry = index.find(e => e.name === FEATURE_NAME);
+  if (!entry) {
+    const tmp = await Item.create(buildFeatureItemData(), { temporary: true });
+    const doc = await pack.importDocument(tmp);
+    await tmp.delete();
+    entry = { _id: doc.id, name: doc.name };
+  }
+  return await pack.getDocument(entry._id);
+}
+
+/* -------------------- Effects & Visuals ---------------------- */
 async function ensureMarkedEffect(targetActor, { on, origin, label = "Marked (Ranger)" }) {
-  // Use embedded document APIs (robust across v10–v14)
   const existing = targetActor.effects.find(e => e.getFlag(MODULE_ID, "markIcon") && e.origin === origin);
   if (on) {
     if (existing) return existing;
@@ -242,7 +232,7 @@ async function applyMarksDialog(rangerActor) {
     await ensureMarkedEffect(ta, { on: true, origin, label: `Marked by ${rangerActor.name}` });
   }
 
-  await rangerActor.setFlag(MODULE_ID, "uses", used + 1); // 1 use per action (even if multiple targets at 6/14)
+  await rangerActor.setFlag(MODULE_ID, "uses", used + 1); // 1 use per application (even if 2/3 targets at 6/14)
   const list = targets.map(t => `<li>${t.name}</li>`).join("");
   const usesLeft = usesMax - (used + 1);
   return ChatMessage.create({
@@ -266,9 +256,9 @@ const Unleash = {
     if (!mark) return F.warn("No mark to Unleash on this target.");
 
     const detFeet = 10;
-    const pixelsPerGrid = canvas.grid.size;
-    const feetPerGrid = canvas.grid.distance;
-    const radiusPx = (detFeet / feetPerGrid) * pixelsPerGrid;
+    const pxPerGrid = canvas.grid.size;
+    const feetPerGrid = canvas.grid.distance || 5;
+    const radiusPx = (detFeet / feetPerGrid) * pxPerGrid;
 
     const myDisposition = ranger?.getActiveTokens()?.[0]?.document?.disposition;
     const inRange = canvas.tokens.placeables.filter(t => {
@@ -364,6 +354,7 @@ function registerMidiQolIntegration() {
     } catch { return {}; }
   });
 
+  // Optional Detonation helper button on a hit
   Hooks.on("midi-qol.AttackRollComplete", async (wf) => {
     if (!wf.hitTargets.size) return;
     const actor = wf.actor;
@@ -452,7 +443,6 @@ class RangerPanel extends ApplicationV2 {
     const used = a.getFlag(MODULE_ID, "uses") ?? 0;
     const maxUses = F.usesPerDay(a);
 
-    // Gather active marks
     const entries = [];
     for (const t of canvas.tokens.placeables) {
       if (!t.actor) continue;
@@ -537,7 +527,6 @@ function addSceneControlButton() {
 }
 
 /* --------------------------- HUD ----------------------------- */
-/** Note: getTokenHUDButtons exists on v14 (Token Action HUD-style). If your HUD mod conflicts, use the panel. */
 function registerTokenHUD() {
   Hooks.on("getTokenHUDButtons", (hud, buttons) => {
     const t = hud.object; // Token
@@ -616,27 +605,90 @@ async function onActorDeathCleanup(actor, changes) {
   }
 }
 
+/* -------------- Auto-Replace Favored Enemy Logic ------------- */
+async function replaceFavoredOnActor(actor) {
+  if (!actor || !F.isRanger(actor)) return false;
+
+  // Originals to catch: name match (en-GB variants), identifier
+  const toRemove = actor.items.filter(i => {
+    if (i.type !== "feat") return false;
+    const n = (i.name || "").toLowerCase().trim();
+    return n === "favored enemy" || n === "favoured enemy" || i.getFlag("dnd5e", "identifier") === "favored-enemy";
+  });
+
+  const haveNew = actor.items.some(i => i.getFlag(MODULE_ID, "feature") || i.name === FEATURE_NAME);
+
+  let added = false;
+  if (!haveNew) {
+    const featDoc = await getSeedFeatureFromPack();
+    const created = await actor.createEmbeddedDocuments("Item", [featDoc.toObject()]);
+    added = !!created?.length;
+  }
+
+  if (toRemove.length) {
+    await actor.deleteEmbeddedDocuments("Item", toRemove.map(i => i.id));
+  }
+
+  return added || toRemove.length > 0;
+}
+
+async function migrateReplaceFavoredAll() {
+  if (!game.user.isGM) return;
+  if (!F.autoReplace()) return;
+
+  const actors = game.actors.contents.filter(a => a.type === "character" && F.isRanger(a));
+  let changed = 0;
+  for (const a of actors) {
+    try { if (await replaceFavoredOnActor(a)) changed++; } catch (e) { console.warn(e); }
+  }
+  if (changed) ui.notifications.info(`Ranger Rework: Replaced Favored Enemy on ${changed} Ranger(s).`);
+}
+
+// Guard: when someone tries to add Favored Enemy in the future, swap it immediately.
+Hooks.on("preCreateItem", async (doc, data, options, userId) => {
+  try {
+    const parent = doc?.parent;
+    if (!(parent instanceof Actor)) return;
+    if (!F.isRanger(parent)) return;
+    if (!F.autoReplace()) return;
+
+    const isFeat = data?.type === "feat";
+    const name = (data?.name || "").toLowerCase().trim();
+    const idf  = data?.flags?.dnd5e?.identifier;
+    const isFavoredEnemy = isFeat && (name === "favored enemy" || name === "favoured enemy" || idf === "favored-enemy");
+    if (!isFavoredEnemy) return;
+
+    const featDoc = await getSeedFeatureFromPack();
+    await parent.createEmbeddedDocuments("Item", [featDoc.toObject()]);
+    ui.notifications.info(`Ranger Rework: Replaced "Favored Enemy" with new class feature on ${parent.name}.`);
+    return false; // cancel original creation
+  } catch (e) {
+    console.warn(`${MODULE_ID} preCreateItem swap failed`, e);
+    return;
+  }
+});
+
 /* --------------------------- Hooks --------------------------- */
 Hooks.once("init", () => {
   registerSettings();
 });
 
-Hooks.once("ready", async () => {Hooks.once("ready", async () => {
+Hooks.once("ready", async () => {
+  // UI wiring & integrations
   registerTokenHUD();
   registerMidiQolIntegration();
   registerCoreEnhancements();
   addSceneControlButton();
 
   if (game.user.isGM) {
-    // 1) Ensure packs exist
+    // Ensure compendium packs exist
     await ensurePack({ name: "features", label: "Ranger Rework - Features", type: "Item", system: "dnd5e" });
     await ensurePack({ name: "macros",   label: "Ranger Rework - Macros",   type: "Macro" });
     await ensurePack({ name: "effects",  label: "Ranger Rework - Effects",  type: "Item", system: "dnd5e" });
 
-    // 2) Seed the feature into the features pack if missing
+    // Seed feature if missing
     const pack = game.packs.get(`${MODULE_ID}.features`);
     const index = await pack.getIndex();
-    const FEATURE_NAME = "Favored Enemy: Hunter's Mark (Class Feature)";
     const exists = index.some(e => e.name === FEATURE_NAME);
     if (!exists) {
       const tmp = await Item.create(buildFeatureItemData(), { temporary: true });
@@ -644,17 +696,21 @@ Hooks.once("ready", async () => {Hooks.once("ready", async () => {
       await tmp.delete();
       ui.notifications.info("Ranger Rework: Feature seeded to compendium. Drag it to your Ranger.");
     }
+
+    // Auto-migrate Favored Enemy replacement, if enabled
+    await migrateReplaceFavoredAll();
   }
 
-  // Expose API (unchanged)
-  game.modules.get(MODULE_ID).api = {
-    applyMarksDialog,
-    ensureMarkedEffect,
-    Unleash,
-    openPanel: (actor) => (new RangerPanel(actor)).render(true)
-  };
+  // Expose API
+  if (game.modules.get(MODULE_ID)) {
+    game.modules.get(MODULE_ID).api = {
+      applyMarksDialog,
+      ensureMarkedEffect,
+      Unleash,
+      openPanel: (actor) => (new RangerPanel(actor)).render(true)
+    };
+  }
 });
-
 
 Hooks.on("dnd5e.restCompleted", async (actor, data) => { if (data?.longRest) await onLongRest(actor); });
 Hooks.on("updateActor", onActorDeathCleanup);
