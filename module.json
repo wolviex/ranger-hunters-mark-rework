@@ -2,7 +2,7 @@
   "id": "ranger-hunters-mark-rework",
   "title": "Ranger: Favored Enemy → Hunter's Mark (Rework)",
   "description": "Class feature that replaces Favored Enemy with a scalable mark + Unleash Aspects (Detonation, Sight, Regeneration).",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "authors": [{ "name": "Joe Manifold" }],
   "compatibility": { "minimum": "14", "verified": "14" },
   "relationships": {

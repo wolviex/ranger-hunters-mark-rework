@@ -1,0 +1,19 @@
+name: build-and-release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Create zip
+        run: |
+          zip -r ranger-hunters-mark-rework-${GITHUB_REF_NAME}.zip \
+            module.json scripts/ packs/ README.md LICENSE
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ranger-hunters-mark-rework-${{ github.ref_name }}.zip
+          generate_release_notes: true
