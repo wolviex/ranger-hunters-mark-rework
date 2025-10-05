@@ -2,29 +2,47 @@
   "id": "ranger-hunters-mark-rework",
   "title": "Ranger: Favored Enemy → Hunter's Mark (Rework)",
   "description": "Class feature that replaces Favored Enemy with a scalable mark + Unleash Aspects.",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "authors": [{ "name": "Joe Manifold" }],
-
-  "compatibility": { "minimum": "13", "verified": "13" },  
-
+  "compatibility": { "minimum": "13", "verified": "13" },
   "relationships": {
     "systems": [
-      { "id": "dnd5e", "type": "system",
-        "compatibility": { "minimum": "5.0.0" } }         
+      { "id": "dnd5e", "type": "system", "compatibility": { "minimum": "5.0.0" } }
     ],
     "recommends": [{ "id": "midi-qol" }, { "id": "lib-wrapper" }]
   },
-
   "esmodules": ["scripts/main.js"],
   "packs": [
-    { "name": "features", "label": "Ranger Rework - Features", "path": "packs/features.db", "type": "Item", "system": "dnd5e", "private": false },
-    { "name": "macros",   "label": "Ranger Rework - Macros",   "path": "packs/macros.db",   "type": "Macro", "private": false },
-    { "name": "effects",  "label": "Ranger Rework - Effects",  "path": "packs/effects.db",  "type": "Item", "system": "dnd5e", "private": false }
+    {
+      "name": "features",
+      "label": "Ranger Rework - Features",
+      "path": "packs/features.db",
+      "type": "Item",
+      "system": "dnd5e",
+      "private": false,
+      "package": "ranger-hunters-mark-rework"
+    },
+    {
+      "name": "macros",
+      "label": "Ranger Rework - Macros",
+      "path": "packs/macros.db",
+      "type": "Macro",
+      "private": false,
+      "package": "ranger-hunters-mark-rework"
+    },
+    {
+      "name": "effects",
+      "label": "Ranger Rework - Effects",
+      "path": "packs/effects.db",
+      "type": "Item",
+      "system": "dnd5e",
+      "private": false,
+      "package": "ranger-hunters-mark-rework"
+    }
   ],
-
   "url": "https://github.com/wolviex/ranger-hunters-mark-rework",
-  "manifest": "https://raw.githubusercontent.com/wolviex/ranger-hunters-mark-rework/v1.1.4/module.json",
-  "download": "https://github.com/wolviex/ranger-hunters-mark-rework/releases/download/v1.1.4/ranger-hunters-mark-rework-v1.1.4.zip",
+  "manifest": "https://raw.githubusercontent.com/wolviex/ranger-hunters-mark-rework/v1.1.5/module.json",
+  "download": "https://github.com/wolviex/ranger-hunters-mark-rework/releases/download/v1.1.5/ranger-hunters-mark-rework-v1.1.5.zip",
   "license": "LICENSE",
   "flags": { "ranger-hunters-mark-rework": { "schema": 2 } }
 }

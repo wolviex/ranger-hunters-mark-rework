@@ -92,6 +92,54 @@ const F = {
   async error(html) { ui.notifications.error(html); }
 };
 
+/** Ensure a compendium pack exists (v13/v14 compatible). */
+async function ensurePack({ name, label, type, system }) {
+  const collection = `${MODULE_ID}.${name}`;
+  let pack = game.packs.get(collection);
+  if (pack) return pack;
+
+  // Create the compendium (requires GM / server context)
+  const metadata = {
+    label,
+    name,
+    path: `packs/${name}.db`,
+    type,               // "Item" | "Macro" | etc.
+    system,             // "dnd5e" for Item packs; omit for Macro
+    package: MODULE_ID, // module id
+    private: false
+  };
+
+  // v10+ API
+  pack = await CompendiumCollection.createCompendium(metadata);
+  // Register it into game.packs for this session
+  return game.packs.get(`${MODULE_ID}.${name}`);
+}
+
+/** Build the seed feature (same as before). */
+function buildFeatureItemData() {
+  return {
+    name: "Favored Enemy: Hunter's Mark (Class Feature)",
+    type: "feat",
+    img: "icons/skills/targeting/target-strike-triple-blue.webp",
+    system: {
+      description: { value: `
+<p><strong>Hunter's Mark (Class Feature)</strong> — replaces Favored Enemy.</p>
+<ul>
+<li>Bonus action: mark up to N targets (N=1@1st, 2@6th, 3@14th).</li>
+<li>Uses/long rest = PB + WIS.</li>
+<li>On hit vs marked: scaling bonus damage (module-configurable type).</li>
+<li>Unleash: Detonation, Sight, Regeneration.</li>
+<li>Marks end on Unleash, target death, or your long rest.</li>
+</ul>` },
+      activation: { type: "bonus", cost: 1 },
+      uses: { value: 0, max: 0, per: "lr" },
+      requirements: "Ranger",
+      source: "Module: Ranger Rework"
+    },
+    flags: { [MODULE_ID]: { feature: true } }
+  };
+}
+
 /* ------------------------- Settings ------------------------- */
 function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.icon, {
@@ -573,23 +621,32 @@ Hooks.once("init", () => {
   registerSettings();
 });
 
-Hooks.once("ready", async () => {
+Hooks.once("ready", async () => {Hooks.once("ready", async () => {
   registerTokenHUD();
   registerMidiQolIntegration();
   registerCoreEnhancements();
   addSceneControlButton();
 
-  // Seed feature to pack
-  const pack = game.packs.get(`${MODULE_ID}.features`);
-  if (pack) {
-    const exists = (await pack.getDocuments()).some(i => i.name === FEATURE_NAME);
+  if (game.user.isGM) {
+    // 1) Ensure packs exist
+    await ensurePack({ name: "features", label: "Ranger Rework - Features", type: "Item", system: "dnd5e" });
+    await ensurePack({ name: "macros",   label: "Ranger Rework - Macros",   type: "Macro" });
+    await ensurePack({ name: "effects",  label: "Ranger Rework - Effects",  type: "Item", system: "dnd5e" });
+
+    // 2) Seed the feature into the features pack if missing
+    const pack = game.packs.get(`${MODULE_ID}.features`);
+    const index = await pack.getIndex();
+    const FEATURE_NAME = "Favored Enemy: Hunter's Mark (Class Feature)";
+    const exists = index.some(e => e.name === FEATURE_NAME);
     if (!exists) {
-      await Item.create(buildFeatureItemData(), { pack: pack.collection });
+      const tmp = await Item.create(buildFeatureItemData(), { temporary: true });
+      await pack.importDocument(tmp);
+      await tmp.delete();
       ui.notifications.info("Ranger Rework: Feature seeded to compendium. Drag it to your Ranger.");
     }
   }
 
-  // Expose API
+  // Expose API (unchanged)
   game.modules.get(MODULE_ID).api = {
     applyMarksDialog,
     ensureMarkedEffect,
@@ -597,6 +654,7 @@ Hooks.once("ready", async () => {
     openPanel: (actor) => (new RangerPanel(actor)).render(true)
   };
 });
+
 
 Hooks.on("dnd5e.restCompleted", async (actor, data) => { if (data?.longRest) await onLongRest(actor); });
 Hooks.on("updateActor", onActorDeathCleanup);
