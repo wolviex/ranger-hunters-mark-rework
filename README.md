@@ -9,12 +9,14 @@ Implements a class feature version of Hunter's Mark that replaces Favored Enemy 
 
 ## Install
 1. Copy this folder into your Foundry data directory:
-Data/modules/ranger-hunters-mark-rework/
-module.json
-scripts/main.js
-packs/ (empty or with .keep)
-README.md
-LICENSE
+   Data/modules/ranger-hunters-mark-rework/
+   module.json
+   scripts/main.js
+   packs/features.db (pre-seeded compendium entry)
+   packs/macros.db
+   packs/effects.db
+   README.md
+   LICENSE
 
 2. Enable in **Manage Modules**.
 3. Open **Packs** → **Ranger Rework – Features** and drag **Favored Enemy: Hunter's Mark (Class Feature)** onto your Ranger.
@@ -40,3 +42,10 @@ LICENSE
 - Multiple Rangers can mark the same creature; each Ranger’s bonus damage triggers only on their hits.
 - No transfer of marks.
 - No concentration.
+
+## Validation & Testing
+- **Pack validation**: run `node tools/validate-packs.mjs` to ensure required compendia (especially the Hunter's Mark feature) are present before packaging a release.
+- **In-Foundry smoke test**: enable the module in a test world, confirm the compendium contains the feature, and use the Token HUD buttons to apply/unleash marks.
+- **Automated regression ideas**:
+  - Use [foundryvtt-cli](https://www.npmjs.com/package/foundryvtt-cli) in CI to spin up a headless world, enable the module, and assert via the Foundry API that the feature exists and the auto-replacement hook adds it to a sample Ranger.
+  - Pair the validation script with linting (e.g., `eslint` on `scripts/main.js`) and the Foundry Package Inspector to catch manifest or compendium regressions before release.
