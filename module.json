@@ -44,9 +44,9 @@
     }
   ],
   "url": "https://github.com/wolviex/ranger-hunters-mark-rework",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "manifest": "https://raw.githubusercontent.com/wolviex/ranger-hunters-mark-rework/main/module.json",
-  "download": "https://github.com/wolviex/ranger-hunters-mark-rework/releases/download/v1.1.6/ranger-hunters-mark-rework-v1.1.6.zip",
+  "download": "https://github.com/wolviex/ranger-hunters-mark-rework/releases/download/v1.1.7/ranger-hunters-mark-rework-v1.1.7.zip",
   "license": "LICENSE",
   "flags": { "ranger-hunters-mark-rework": { "schema": 2 } }
 }
