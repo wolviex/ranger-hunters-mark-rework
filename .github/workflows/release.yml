@@ -14,10 +14,10 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Create zip
         run: |
-          zip -r ranger-hunters-mark-rework-${{ github.ref_name }}.zip \
+          zip -r ranger-hunters-mark-rework.zip \
             module.json scripts/ packs/ README.md LICENSE
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ranger-hunters-mark-rework-${{ github.ref_name }}.zip
+          files: ranger-hunters-mark-rework.zip
           generate_release_notes: true
